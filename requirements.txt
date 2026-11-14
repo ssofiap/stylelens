@@ -6,3 +6,4 @@ prometheus_client==0.26.0
 python-multipart==0.0.33
 qdrant-client==1.20.0
 uvicorn==0.54.0
+mlflow-skinny==3.18.0

@@ -2,19 +2,29 @@ import io
 import os
 import time
 from contextlib import asynccontextmanager
+import glob
+import tempfile
+import mlflow
+from mlflow import MlflowClient
 
 import numpy as np
 import onnxruntime as ort
 from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
 from PIL import Image
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest, Info
 from qdrant_client import QdrantClient
 
-from common.preprocess import preprocess  # SAME function the indexer uses
+from common.preprocess import preprocess # SAME function the indexer uses
 
-MODEL_PATH = os.getenv("MODEL_PATH", "export/clip_vitb32_image.onnx")
+MODEL_PATH = os.getenv("MODEL_PATH") # dev override: skip the registry
+MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+MODEL_NAME = os.getenv("MODEL_NAME", "stylelens-clip")
+MODEL_ALIAS = os.getenv("MODEL_ALIAS", "champion")
+MODEL_VERSION = os.getenv("MODEL_VERSION") # if set, pins a version, ignores alias
+MODEL_CACHE = os.path.join(tempfile.gettempdir(), "stylelens_models")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
-COLLECTION = os.getenv("COLLECTION", "catalog")  # an alias, later
+COLLECTION = os.getenv("COLLECTION", "catalog") # an alias, later
+MODEL_INFO = Info("stylelens_model", "Loaded embedding model")
 
 LAT = (0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.25, 0.5, 1.0, 2.5)
 EMBED_S = Histogram("stylelens_embed_seconds", "Image -> vector", buckets=LAT)
@@ -25,18 +35,38 @@ TOP1 = Histogram("stylelens_top1_similarity", "Cosine sim of best hit", buckets=
 
 state = {}
 
+def resolve_model():
+    mlflow.set_tracking_uri(MLFLOW_URI)
+    client = MlflowClient()
+    if MODEL_VERSION:
+        mv = client.get_model_version(MODEL_NAME, MODEL_VERSION)
+    else:
+        mv = client.get_model_version_by_alias(MODEL_NAME, MODEL_ALIAS)
+    dst = os.path.join(MODEL_CACHE, f"v{mv.version}")
+    os.makedirs(dst, exist_ok=True)
+    local = mlflow.artifacts.download_artifacts(artifact_uri=mv.source, dst_path=dst)
+
+    return glob.glob(os.path.join(local, "*.onnx"))[0], mv.version
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    state["sess"] = ort.InferenceSession(MODEL_PATH, providers=["CPUExecutionProvider"])
+    if MODEL_PATH:
+        path, version = MODEL_PATH, "local"
+    else:
+        path, version = resolve_model()
+    state["version"] = str(version)
+    MODEL_INFO.info({"name": MODEL_NAME, "version": state["version"]})
+    state["sess"] = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
     state["input"] = state["sess"].get_inputs()[0].name
     state["qdrant"] = QdrantClient(url=QDRANT_URL)
+    state["sess"].run(None, {state["input"]: np.zeros((1, 3, 224, 224), np.float32)})  # warm-up
     yield
 
 app = FastAPI(title="StyleLens", lifespan=lifespan)
 
 @app.get("/healthz")
 def healthz():
-    return {"status": "ok"}
+    return {"status": "ok", "model_version": state.get("version")}
 
 @app.get("/metrics")
 def metrics():
