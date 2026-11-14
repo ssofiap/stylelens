@@ -4,3 +4,4 @@ data/
 qdrant_storage/
 *.onnx
 __pycache__/
+mlflow_data/
