@@ -90,7 +90,7 @@ A new embedding model changes the vector space, so queries embedded with model N
 
 ## evaluation ⭑.ᐟ
 
-- **Data:** [Fashion Product Images Dataset](https://www.kaggle.com/datasets/paramaggarwal/fashion-product-images-dataset). Catalog subset (up to 5k images) and a fixed holdout of about 500 queries. MIT license.
+- **Data:** [Fashion Product Images Dataset](https://www.kaggle.com/datasets/paramaggarwal/fashion-product-images-dataset). Catalog subset (up to 5k images) and a fixed holdout of about 500 queries. MIT license. Must be downloaded and added to `data/` folder : `fashion-product-images-small.zip`.
 - **Metric:** precision@k, where a result is relevant if it shares the query's article type. This is a coarse proxy for visual similarity; it does not capture color, pattern or style.
 - **Gate:** CI fails if precision@k falls below the current champion's, or if p99 latency regresses beyond a set margin. 
 
