@@ -1,0 +1,6 @@
+.venv/
+.git/
+data/
+qdrant_storage/
+*.onnx
+__pycache__/

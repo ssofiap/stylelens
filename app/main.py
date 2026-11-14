@@ -1,0 +1,68 @@
+import io
+import os
+import time
+from contextlib import asynccontextmanager
+
+import numpy as np
+import onnxruntime as ort
+from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
+from PIL import Image
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from qdrant_client import QdrantClient
+
+from common.preprocess import preprocess  # SAME function the indexer uses
+
+MODEL_PATH = os.getenv("MODEL_PATH", "export/clip_vitb32_image.onnx")
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+COLLECTION = os.getenv("COLLECTION", "catalog")  # an alias, later
+
+LAT = (0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.25, 0.5, 1.0, 2.5)
+EMBED_S = Histogram("stylelens_embed_seconds", "Image -> vector", buckets=LAT)
+SEARCH_S = Histogram("stylelens_search_seconds", "Vector -> top-k", buckets=LAT)
+REQ_S = Histogram("stylelens_request_seconds", "End-to-end /search", buckets=LAT)
+REQS = Counter("stylelens_requests_total", "Requests", ["status"])
+TOP1 = Histogram("stylelens_top1_similarity", "Cosine sim of best hit", buckets=[i / 20 for i in range(1, 21)])
+
+state = {}
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    state["sess"] = ort.InferenceSession(MODEL_PATH, providers=["CPUExecutionProvider"])
+    state["input"] = state["sess"].get_inputs()[0].name
+    state["qdrant"] = QdrantClient(url=QDRANT_URL)
+    yield
+
+app = FastAPI(title="StyleLens", lifespan=lifespan)
+
+@app.get("/healthz")
+def healthz():
+    return {"status": "ok"}
+
+@app.get("/metrics")
+def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+@app.post("/search")
+def search(file: UploadFile = File(...), k: int = Query(5, ge=1, le=50)):
+    t0 = time.perf_counter()
+    try:
+        img = Image.open(io.BytesIO(file.file.read())).convert("RGB")
+    except Exception:
+        REQS.labels("400").inc()
+        raise HTTPException(400, "not a valid image")
+
+    t1 = time.perf_counter()
+    x = preprocess(img).astype(np.float32)[None, ...]
+    v = state["sess"].run(None, {state["input"]: x})[0][0]
+    v = v / np.linalg.norm(v) # must match the indexer
+    t2 = time.perf_counter()
+    hits = state["qdrant"].query_points(COLLECTION, query=v.tolist(), limit=k).points
+    t3 = time.perf_counter()
+
+    EMBED_S.observe(t2 - t1); SEARCH_S.observe(t3 - t2); REQ_S.observe(t3 - t0)
+    if hits:
+        TOP1.observe(hits[0].score)
+
+    REQS.labels("200").inc()
+
+    return {"results": [{"id": h.id, "score": h.score, "articleType": h.payload.get("articleType")} for h in hits]}
