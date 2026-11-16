@@ -1,0 +1,8 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["data", "mlflow_data", "qdrant_storage"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
