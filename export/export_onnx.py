@@ -5,8 +5,8 @@ import pandas as pd
 import torch
 from PIL import Image
 
-from common.preprocess import preprocess
 from common.model_config import CLIP_ARCH, CLIP_PRETRAINED
+from common.preprocess import preprocess
 
 OUT = "export/clip_vitb32_image.onnx"
 model, _, ref_preprocess = open_clip.create_model_and_transforms(
