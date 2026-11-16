@@ -1,18 +1,21 @@
 from pathlib import Path
+
 import numpy as np
 import pytest
+
+from common.model_config import CLIP_ARCH, CLIP_PRETRAINED
 
 MODEL = Path("export/clip_vitb32.onnx")
 GOLDEN = np.load(Path(__file__).parent / "fixtures" / "golden_preprocess.npz")
 
 
-@pytest.mark.skipif(not MODEL.exists(), reason="model artifact not in repo")
+@pytest.mark.skipif(not MODEL.is_file(), reason="model artifact not in repo")
 def test_onnx_matches_pytorch():
     torch = pytest.importorskip("torch")
     open_clip = pytest.importorskip("open_clip")
     import onnxruntime as ort
 
-    model, _, _ = open_clip.create_model_and_transforms("ViT-B-32", pretrained="openai")
+    model, _, _ = open_clip.create_model_and_transforms(CLIP_ARCH, pretrained=CLIP_PRETRAINED)
     model.eval()
     sess = ort.InferenceSession(str(MODEL), providers=["CPUExecutionProvider"])
     name = sess.get_inputs()[0].name

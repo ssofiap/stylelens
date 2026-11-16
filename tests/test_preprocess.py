@@ -15,10 +15,10 @@ def load(name: str) -> Image.Image:
 
 
 def test_shape():
-    assert preprocess(load("img0")).shape == (1, 3, 224, 224)
+    assert preprocess(load("img0")).shape == (3, 224, 224)
 
 
 @pytest.mark.parametrize("name", GOLDEN.files)
 def test_matches_open_clip(name):
     got = preprocess(load(name)).astype(np.float32)
-    np.testing.assert_allclose(got, GOLDEN[name], atol=1e-4)
+    np.testing.assert_allclose(got, GOLDEN[name][0], atol=1e-4)  # golden is (1, C, H, W)
