@@ -9,7 +9,7 @@ COPY --from=builder /install /usr/local
 WORKDIR /srv
 COPY app/ app/
 COPY common/ common/
-New-Item indexer/__init__.py
+RUN mkdir -p indexer && touch indexer/__init__.py
 COPY indexer/ indexer/
 USER appuser
 EXPOSE 8000
