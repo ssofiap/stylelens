@@ -5,7 +5,7 @@ import pytest
 
 from common.model_config import CLIP_ARCH, CLIP_PRETRAINED
 
-MODEL = Path("export/clip_vitb32.onnx")
+MODEL = Path("export/clip_vitb32_image.onnx")
 GOLDEN = np.load(Path(__file__).parent / "fixtures" / "golden_preprocess.npz")
 
 

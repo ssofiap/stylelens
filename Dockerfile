@@ -9,6 +9,8 @@ COPY --from=builder /install /usr/local
 WORKDIR /srv
 COPY app/ app/
 COPY common/ common/
+New-Item indexer/__init__.py
+COPY indexer/ indexer/
 USER appuser
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

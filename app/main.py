@@ -1,28 +1,22 @@
-import glob
 import io
 import os
-import tempfile
 import time
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-import mlflow
 import numpy as np
 import onnxruntime as ort
 from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
-from mlflow import MlflowClient
 from PIL import Image
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, Info, generate_latest
 from qdrant_client import QdrantClient
 
 from common.preprocess import preprocess  # SAME function the indexer uses
+from common.registry import MODEL_NAME, resolve
 
 MODEL_PATH = os.getenv("MODEL_PATH")  # dev override: skip the registry
-MLFLOW_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
-MODEL_NAME = os.getenv("MODEL_NAME", "stylelens-clip")
 MODEL_ALIAS = os.getenv("MODEL_ALIAS", "champion")
 MODEL_VERSION = os.getenv("MODEL_VERSION")  # if set, pins a version, ignores alias
-MODEL_CACHE = os.path.join(tempfile.gettempdir(), "stylelens_models")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 COLLECTION = os.getenv("COLLECTION", "catalog")  # an alias, later
 MODEL_INFO = Info("stylelens_model", "Loaded embedding model")
@@ -39,26 +33,12 @@ TOP1 = Histogram(
 state = {}
 
 
-def resolve_model():
-    mlflow.set_tracking_uri(MLFLOW_URI)
-    client = MlflowClient()
-    if MODEL_VERSION:
-        mv = client.get_model_version(MODEL_NAME, MODEL_VERSION)
-    else:
-        mv = client.get_model_version_by_alias(MODEL_NAME, MODEL_ALIAS)
-    dst = os.path.join(MODEL_CACHE, f"v{mv.version}")
-    os.makedirs(dst, exist_ok=True)
-    local = mlflow.artifacts.download_artifacts(artifact_uri=mv.source, dst_path=dst)
-
-    return glob.glob(os.path.join(local, "*.onnx"))[0], mv.version
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if MODEL_PATH:
         path, version = MODEL_PATH, "local"
     else:
-        path, version = resolve_model()
+        path, version = resolve(MODEL_ALIAS, MODEL_VERSION)
     state["version"] = str(version)
     MODEL_INFO.info({"name": MODEL_NAME, "version": state["version"]})
     state["sess"] = ort.InferenceSession(path, providers=["CPUExecutionProvider"])

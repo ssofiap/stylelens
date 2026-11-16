@@ -11,3 +11,9 @@ services:
       - "5000:5000"
     volumes:
       - ./mlflow_data:/mlflow
+  qdrant:
+    image: qdrant/qdrant:v1.20.1
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
