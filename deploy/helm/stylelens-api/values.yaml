@@ -1,0 +1,18 @@
+image:
+  repository: ghcr.io/ssofiap/stylelens
+  tag: "" # required: sha-xxxxxxx, set at deploy time
+replicas: 1
+model:
+  name: stylelens-clip
+  version: "" # required: champion alias resolved at deploy time
+mlflowUri: http://host.docker.internal:5000
+qdrantUrl: http://qdrant:6333
+collection: catalog
+service:
+  nodePort: 30080
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    memory: 2Gi
